@@ -11,7 +11,7 @@ func (fio FileIO) Read(key []byte, offset int64) (int, error) {
 }
 
 func (fio FileIO) Write(key []byte) (int, error) {
-	return fio.f.WriteAt(key, 0)
+	return fio.f.Write(key)
 }
 
 func (fio FileIO) Sync() error {

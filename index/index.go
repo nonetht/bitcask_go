@@ -1,6 +1,11 @@
 package index
 
-import "bitcask-gown/data"
+import (
+	"bitcask-gown/data"
+	"bytes"
+
+	"github.com/google/btree"
+)
 
 // Indexer 索引接口，只有实现了基本的增、删、查的功能，才可以称之为索引。此外之所以使用接口，是因为便于后续其他数据结构实现的方式。
 type Indexer interface {
@@ -10,4 +15,13 @@ type Indexer interface {
 	Delete(key []byte) bool
 	// Get 根据 key，从索引中，取出对应位置信息
 	Get(key []byte) (*data.LogRecordPos, bool)
+}
+
+type Item struct {
+	key []byte
+	pos *data.LogRecordPos
+}
+
+func (ai *Item) Less(bi btree.Item) bool {
+	return bytes.Compare(ai.key, bi.(*Item).key) < 0 // TODO: 类型断言是什么来着？
 }

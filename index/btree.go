@@ -2,7 +2,6 @@ package index
 
 import (
 	"bitcask-gown/data"
-	"bytes"
 	"sync"
 
 	"github.com/google/btree"
@@ -14,16 +13,7 @@ type BTree struct {
 	lock *sync.RWMutex
 }
 
-type Item struct {
-	key []byte
-	pos *data.LogRecordPos
-}
-
-func (ai *Item) Less(bi btree.Item) bool {
-	return bytes.Compare(ai.key, bi.(*Item).key) < 0 // TODO: 类型断言是什么来着？
-}
-
-// NewBTree
+// NewBTree 创建一个新的 BTree 结构体
 func NewBTree() *BTree {
 	return &BTree{
 		tree: btree.New(32),
@@ -31,22 +21,27 @@ func NewBTree() *BTree {
 	}
 }
 
+// Put 将对应的 Item 添加到索引之中
 func (b *BTree) Put(key []byte, pos *data.LogRecordPos) bool {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	oldItem := b.tree.ReplaceOrInsert(&Item{key, pos})
-	return oldItem == nil
+	b.tree.ReplaceOrInsert(&Item{key, pos})
+	return true
 }
 
+// Delete 将 key 所对应的 Item 从索引中删除。如果删除成功，返回 true，反之为 false。
 func (b *BTree) Delete(key []byte) bool {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	oldItem := b.tree.ReplaceOrInsert(&Item{key, nil})
-	return oldItem != nil
+	if it := b.tree.Delete(&Item{key: key}); it != nil {
+		return true
+	}
+	return false
 }
 
+// Get 从索引中获取 key 对应的 Item，如果获取成功返回对应的记录和 true，反之为 nil，false。
 func (b *BTree) Get(key []byte) (*data.LogRecordPos, bool) {
 	b.lock.RLock()
 	defer b.lock.RUnlock()

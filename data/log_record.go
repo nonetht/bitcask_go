@@ -7,7 +7,7 @@ const (
 	LogRecordToDelete
 )
 
-// LogRecord 我们是以类似日志写入的方式来追加 LogRecord，同时增加 typ 来表示这是一个新增数据或者待删除数据。
+// LogRecord 我们是以类似日志写入的方式来追加 LogRecord，同时增加 Type 来表示这是一个新增数据或者待删除数据。
 type LogRecord struct {
 	Key   []byte
 	Value []byte

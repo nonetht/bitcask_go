@@ -34,3 +34,21 @@ func NewDataFile(fileName string, fileId uint32) (*DataFile, error) {
 		IOManager: ioManager,
 	}, nil
 }
+
+func (fio *DataFile) Sync() error {
+	return fio.IOManager.Sync()
+}
+
+func (fio *DataFile) Write(buf []byte) error {
+	n, err := fio.IOManager.Write(buf)
+	if err != nil {
+		return err
+	}
+	// 递增其 WriteOff 的字段
+	fio.WriteOff += int64(n)
+	return nil
+}
+
+func (fio *DataFile) Close() error {
+	return fio.IOManager.Close()
+}

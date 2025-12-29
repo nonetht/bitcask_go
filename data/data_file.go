@@ -30,7 +30,7 @@ func NewDataFile(fileName string, fileId uint32) (*DataFile, error) {
 
 	return &DataFile{
 		FileID:    fileId,
-		WriteOff:  0,
+		WriteOff:  ioManager.Size(),
 		IOManager: ioManager,
 	}, nil
 }

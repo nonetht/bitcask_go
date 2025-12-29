@@ -4,12 +4,16 @@ import (
 	"bitcask-gown/data"
 	"bitcask-gown/index"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
 // DB 定义数据库，以及相应字段
 type DB struct {
 	option     Options
+	fileIds    []int
 	lock       *sync.RWMutex             // 支持并发，需要锁
 	activeFile *data.DataFile            // 当前正在执行写入的活跃文件
 	oldFiles   map[uint32]*data.DataFile // 已经“写满”的旧数据文件
@@ -34,10 +38,12 @@ func Open(opt Options) (*DB, error) {
 		return nil, err
 	}
 
+	// 填充 db 结构体之中的 activeFile, oldFiles 字段
 	if err := db.loadDataFile(); err != nil {
 		return nil, err
 	}
 
+	// 填充 db 结构体之中的 Indexer 字段
 	if err := db.loadIndexFromDataFile(); err != nil {
 		return nil, err
 	}
@@ -48,6 +54,7 @@ func Open(opt Options) (*DB, error) {
 func NewDB(options Options) (*DB, error) {
 	return &DB{
 		option:     options,
+		fileIds:    []int{},
 		lock:       new(sync.RWMutex),
 		activeFile: nil,
 		oldFiles:   make(map[uint32]*data.DataFile),
@@ -166,7 +173,46 @@ func (db *DB) createActiveFile() error {
 	return nil
 }
 
+// 从磁盘之中加载数据文件
 func (db *DB) loadDataFile() error {
+	// 读取配置文件下其中的文件夹路径信息
+	dirEntries, err := os.ReadDir(db.option.DirPath)
+	if err != nil {
+		return err
+	}
+
+	// 遍历路径下所有 .data 后缀文件，将其添加到 dataFileIds 数组之中
+	// 其中涉及到了很多我之前没接触过的方法：strings.HasSuffix, strings.Split ...
+	var dataFileIds []int
+	db.fileIds = dataFileIds
+
+	for _, dirEntry := range dirEntries {
+		if strings.HasSuffix(dirEntry.Name(), data.DataFileNameSuffix) {
+			splitNames := strings.Split(dirEntry.Name(), ".")
+			fileName, err := strconv.Atoi(splitNames[0])
+			if err != nil {
+				return err
+			}
+			dataFileIds = append(dataFileIds, fileName)
+		}
+	}
+
+	// 对 dataFileIds 进行排序
+	sort.Ints(dataFileIds)
+	for i, fileId := range dataFileIds {
+		if i == len(dataFileIds)-1 {
+			db.activeFile, err = data.OpenDataFile(db.option.DirPath, uint32(fileId))
+			if err != nil {
+				return err
+			}
+		} else {
+			oldFile, err := data.OpenDataFile(db.option.DirPath, uint32(fileId))
+			if err != nil {
+				return err
+			}
+			db.oldFiles[oldFile.FileID] = oldFile
+		}
+	}
 	return nil
 }
 

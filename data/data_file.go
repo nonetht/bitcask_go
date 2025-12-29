@@ -18,7 +18,7 @@ type DataFile struct {
 // OpenDataFile 打开或创建新的数据文件
 func OpenDataFile(dirPath string, fileId uint32) (*DataFile, error) {
 	// 1. 拼接文件名，例如：/tmp/bitcask/000000001.data
-	fileName := filepath.Join(dirPath, fmt.Sprintf("%09d.data", fileId)+DataFileNameSuffix)
+	fileName := filepath.Join(dirPath, fmt.Sprintf("%09d", fileId)+DataFileNameSuffix)
 	return NewDataFile(fileName, fileId)
 }
 

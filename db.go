@@ -217,5 +217,31 @@ func (db *DB) loadDataFile() error {
 }
 
 func (db *DB) loadIndexFromDataFile() error {
+	for _, fileId := range db.fileIds {
+		var offset int64 = 0
+		dataFile, err := data.OpenDataFile(db.option.DirPath, uint32(fileId))
+		if err != nil {
+			return err
+		}
+
+		record, i, err := dataFile.ReadLogRecord(offset)
+		if err != nil {
+			return err
+		}
+
+		// 创建一条新的 pos
+		pos := &data.LogRecordPos{
+			Fid:    uint32(fileId),
+			Offset: offset,
+		}
+
+		// 向索引之中添加该 pos
+		if ok := db.index.Put(record.Key, pos); !ok {
+			return ErrIndexUpdateFailed
+		}
+
+		offset += i // 递增 offset 部分内容
+	}
+
 	return nil
 }

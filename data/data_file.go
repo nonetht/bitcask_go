@@ -52,3 +52,7 @@ func (fio *DataFile) Write(buf []byte) error {
 func (fio *DataFile) Close() error {
 	return fio.IOManager.Close()
 }
+
+func (fio *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
+	return nil, 0, nil
+}

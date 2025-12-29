@@ -37,3 +37,7 @@ func (fio *FileIO) Sync() error {
 func (fio *FileIO) Close() error {
 	return fio.f.Close()
 }
+
+func (fio *FileIO) Size() int64 {
+	return 0
+}

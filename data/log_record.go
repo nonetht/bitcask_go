@@ -14,8 +14,9 @@ type LogRecord struct {
 	Type  LogRecordType
 }
 
-func NewLogRecord(key, value []byte) LogRecord {
-	return LogRecord{
+// NewLogRecord 创建一条新的 LogRecord，返回其位置信息（不是实例）。
+func NewLogRecord(key, value []byte) *LogRecord {
+	return &LogRecord{
 		Key:   key,
 		Value: value,
 		Type:  LogRecordNormal,
@@ -26,4 +27,8 @@ func NewLogRecord(key, value []byte) LogRecord {
 type LogRecordPos struct {
 	Fid    uint32
 	Offset int64
+}
+
+func EncodeLogRecord(record *LogRecord) ([]byte, int) {
+	return nil, 0
 }

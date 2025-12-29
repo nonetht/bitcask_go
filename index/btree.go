@@ -2,6 +2,7 @@ package index
 
 import (
 	"bitcask-gown/data"
+	"bytes"
 	"sync"
 
 	"github.com/google/btree"
@@ -51,4 +52,13 @@ func (b *BTree) Get(key []byte) (*data.LogRecordPos, bool) {
 		return nil, false
 	}
 	return it.(*Item).pos, true
+}
+
+type Item struct {
+	key []byte
+	pos *data.LogRecordPos
+}
+
+func (ai *Item) Less(bi btree.Item) bool {
+	return bytes.Compare(ai.key, bi.(*Item).key) < 0 // TODO: 类型断言是什么来着？
 }

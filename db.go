@@ -16,9 +16,9 @@ type DB struct {
 }
 
 // NewDB 创建数据库实例
-func NewDB(option Options) (*DB, error) {
+func NewDB(options Options) (*DB, error) {
 	return &DB{
-		option:     option,
+		option:     options,
 		lock:       new(sync.RWMutex),
 		activeFile: nil,
 		oldFiles:   make(map[uint32]*data.DataFile),
@@ -60,11 +60,13 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 
 	var dataFile *data.DataFile
 
-	if db.activeFile.FileID == pos.Fid {
+	//
+	if pos.Fid == db.activeFile.FileID {
 		dataFile = db.activeFile
-	}
-	if db.oldFiles[pos.Fid] != nil {
+	} else if pos.Fid != db.activeFile.FileID {
 		dataFile = db.oldFiles[pos.Fid]
+	} else {
+		return nil, ErrDataFileNotFound
 	}
 
 	record, _, err := dataFile.ReadLogRecord(pos.Offset)

@@ -15,6 +15,17 @@ type DB struct {
 	index      index.Indexer             // 索引部分，存储数据位置信息的地方
 }
 
+// NewDB 创建数据库实例
+func NewDB(option Options) (*DB, error) {
+	return &DB{
+		option:     option,
+		lock:       new(sync.RWMutex),
+		activeFile: nil,
+		oldFiles:   make(map[uint32]*data.DataFile),
+		index:      index.NewBTree(),
+	}, nil
+}
+
 // Put 向 db 之中添加一条新的 logRecord 信息，将 logRecord 添加到活跃文件之后，还要将其添加到索引之中。
 func (db *DB) Put(key []byte, value []byte) error {
 	if len(key) == 0 {

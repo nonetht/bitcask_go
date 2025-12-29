@@ -93,12 +93,12 @@ func (db *DB) appendLogRecord(record *data.LogRecord) (*data.LogRecordPos, error
 		if err := db.activeFile.IOManager.Sync(); err != nil {
 			return nil, err
 		}
-		// 2.将“写满”的活跃文件，转换为旧文件
-		db.oldFiles[db.activeFile.FileID] = db.activeFile
-		// 3.创建一个新的活跃文件（ID 递增）
+		// 2.创建一个新的活跃文件（ID 递增）
 		if err := db.createActiveFile(); err != nil {
 			return nil, err
 		}
+		// 3.将“写满”的活跃文件，转换为旧文件
+		db.oldFiles[db.activeFile.FileID] = db.activeFile
 	}
 
 	offset := db.activeFile.WriteOff

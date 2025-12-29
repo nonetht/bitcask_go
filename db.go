@@ -36,6 +36,33 @@ func (db *DB) Put(key []byte, value []byte) error {
 	return nil
 }
 
+// Get 根据 key 来获取对应的 value 值的信息
+func (db *DB) Get(key []byte) ([]byte, error) {
+	// 仍然是老规矩加锁
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	pos, ok := db.index.Get(key)
+	if !ok {
+		return nil, ErrIndexNotFound
+	}
+
+	var dataFile *data.DataFile
+
+	if db.activeFile.FileID == pos.Fid {
+		dataFile = db.activeFile
+	}
+	if db.oldFiles[pos.Fid] != nil {
+		dataFile = db.oldFiles[pos.Fid]
+	}
+
+	record, _, err := dataFile.ReadLogRecord(pos.Offset)
+	if err != nil {
+		return nil, err
+	}
+	return record.Value, nil
+}
+
 // 理解为 Put 方法的辅助函数，对于这种私有辅助方法，可以不加锁
 func (db *DB) appendLogRecord(record *data.LogRecord) (*data.LogRecordPos, error) {
 	// 说明是第一次创建的 db 数据库实例，其 fileID 为0.
@@ -72,8 +99,6 @@ func (db *DB) appendLogRecord(record *data.LogRecord) (*data.LogRecordPos, error
 			return nil, err
 		}
 	}
-}
-
 	// 新建 logRecordPos 信息，随后返回
 	pos := &data.LogRecordPos{
 		Fid:    db.activeFile.FileID,

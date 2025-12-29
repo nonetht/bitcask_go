@@ -3,6 +3,7 @@ package bitcask_gown
 import (
 	"bitcask-gown/data"
 	"bitcask-gown/index"
+	"os"
 	"sync"
 )
 
@@ -13,6 +14,34 @@ type DB struct {
 	activeFile *data.DataFile            // 当前正在执行写入的活跃文件
 	oldFiles   map[uint32]*data.DataFile // 已经“写满”的旧数据文件
 	index      index.Indexer             // 索引部分，存储数据位置信息的地方
+}
+
+func Open(opt Options) (*DB, error) {
+	// 校验配置信息
+	if ok := checkOptions(opt); ok != nil {
+		return nil, ok
+	}
+
+	// 打开对应的 DirPath 文件夹，如果不存在的话，则创建一个新的文件夹
+	if _, err := os.Stat(opt.DirPath); os.IsNotExist(err) {
+		if err := os.Mkdir(opt.DirPath, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	db, err := NewDB(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.loadDataFile(); err != nil {
+		return nil, err
+	}
+
+	if err := db.loadIndexFromDataFile(); err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // NewDB 创建数据库实例
@@ -63,10 +92,11 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	//
 	if pos.Fid == db.activeFile.FileID {
 		dataFile = db.activeFile
-	} else if pos.Fid != db.activeFile.FileID {
-		dataFile = db.oldFiles[pos.Fid]
 	} else {
-		return nil, ErrDataFileNotFound
+		dataFile = db.oldFiles[pos.Fid]
+		if dataFile == nil {
+			return nil, ErrDataFileNotFound
+		}
 	}
 
 	record, _, err := dataFile.ReadLogRecord(pos.Offset)
@@ -93,12 +123,14 @@ func (db *DB) appendLogRecord(record *data.LogRecord) (*data.LogRecordPos, error
 		if err := db.activeFile.IOManager.Sync(); err != nil {
 			return nil, err
 		}
-		// 2.创建一个新的活跃文件（ID 递增）
+		// 2.保存旧活跃文件
+		oldActiveFile := db.activeFile
+		// 3.创建一个新的活跃文件（ID 递增）
 		if err := db.createActiveFile(); err != nil {
 			return nil, err
 		}
-		// 3.将“写满”的活跃文件，转换为旧文件
-		db.oldFiles[db.activeFile.FileID] = db.activeFile
+		// 4.将“写满”的活跃文件，转换为旧文件
+		db.oldFiles[oldActiveFile.FileID] = oldActiveFile
 	}
 
 	offset := db.activeFile.WriteOff
@@ -131,5 +163,13 @@ func (db *DB) createActiveFile() error {
 		return err
 	}
 	db.activeFile = newActiveFile
+	return nil
+}
+
+func (db *DB) loadDataFile() error {
+	return nil
+}
+
+func (db *DB) loadIndexFromDataFile() error {
 	return nil
 }

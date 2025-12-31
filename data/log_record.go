@@ -32,8 +32,8 @@ func NewLogRecord(key, value []byte) *LogRecord {
 type logRecordHeader struct {
 	CRC       uint32        // 校验值
 	Type      LogRecordType // 类型
-	KeySize   uint32        // Key 的长度大小
-	ValueSize uint32        // Value 的长度大小
+	KeySize   uint32        // 变长类型，Key 的长度大小
+	ValueSize uint32        // Value 的长度
 }
 
 // LogRecordPos 记录存储的文件名称 Fid 以及对应的位置 Offset
@@ -47,6 +47,26 @@ func EncodeLogRecord(record *LogRecord) ([]byte, int) {
 }
 
 // 对字节数组之中的 Header 信息进行解码，将其由 []byte 转化为 logRecordHeader
-func decodeLogRecordHeader(buf []byte) (*logRecordHeader, error) {
-	return nil, nil
+func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int) {
+	if len(buf) < 5 {
+		return nil, 0
+	}
+
+	crc, typ := binary.LittleEndian.Uint32(buf[0:4]), buf[4]
+	index := 5
+
+	// 解码 KeySize，从 index 开始读，读出数值以及长度
+	keySize, n := binary.Varint(buf[index:])
+	index += n
+
+	// 解码 ValueSize 从 index 开始读，读出数值以及长度
+	valueSize, n := binary.Varint(buf[index:])
+	index += n
+
+	return &logRecordHeader{
+		CRC:       crc,
+		Type:      typ,
+		KeySize:   uint32(keySize),
+		ValueSize: uint32(valueSize),
+	}, index
 }

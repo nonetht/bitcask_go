@@ -122,17 +122,20 @@ func (db *DB) Delete(key []byte) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	deleteRec := &data.LogRecord{
+	recToDelete := &data.LogRecord{
 		Key:  key,
 		Type: data.LogRecordToDelete,
 	}
 
-	_, err := db.appendLogRecord(deleteRec)
+	_, err := db.appendLogRecord(recToDelete)
 	if err != nil {
 		return err
 	}
 
-	db.index.Delete(key)
+	// 内存索引更新
+	if ok := db.index.Delete(key); !ok {
+		return ErrIndexUpdateFailed
+	}
 	return nil
 }
 

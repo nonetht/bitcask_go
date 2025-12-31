@@ -113,6 +113,29 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	return record.Value, nil
 }
 
+// Delete 采用追加写入的方式来删除一条数据，并且更新索引
+func (db *DB) Delete(key []byte) error {
+	if len(key) == 0 {
+		return ErrKeyIsEmpty
+	}
+
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	deleteRec := &data.LogRecord{
+		Key:  key,
+		Type: data.LogRecordToDelete,
+	}
+
+	_, err := db.appendLogRecord(deleteRec)
+	if err != nil {
+		return err
+	}
+
+	db.index.Delete(key)
+	return nil
+}
+
 // 理解为 Put 方法的辅助函数，对于这种私有辅助方法，可以不加锁
 func (db *DB) appendLogRecord(record *data.LogRecord) (*data.LogRecordPos, error) {
 	// 说明是第一次创建的 db 数据库实例，其 fileID 为0.
@@ -217,6 +240,11 @@ func (db *DB) loadDataFile() error {
 }
 
 func (db *DB) loadIndexFromDataFile() error {
+	// 判断是否存在数据文件
+	if len(db.fileIds) == 0 {
+		return ErrDataFileNotFound
+	}
+
 	for _, fileId := range db.fileIds {
 		var offset int64 = 0
 		dataFile, err := data.OpenDataFile(db.option.DirPath, uint32(fileId))

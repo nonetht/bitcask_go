@@ -8,5 +8,5 @@ type IOManager interface {
 	Sync() error
 	// Close 关闭文件句柄。
 	Close() error
-	Size() int64
+	Size() (int64, error)
 }

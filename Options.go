@@ -5,3 +5,14 @@ type Options struct {
 	DataFileSize int64  // 数据文件最大的大小
 	SyncWrites   bool   // 是否选择执行持久化
 }
+
+func checkOptions(opt Options) error {
+	if len(opt.DirPath) == 0 {
+		return ErrDirPathIsEmpty
+	}
+	if opt.DataFileSize <= 0 {
+		return ErrInvalidDataFileSize
+	}
+
+	return nil
+}

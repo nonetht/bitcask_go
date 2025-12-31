@@ -3,6 +3,7 @@ package bitcask_gown
 import (
 	"bitcask-gown/data"
 	"bitcask-gown/index"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -18,6 +19,18 @@ type DB struct {
 	activeFile *data.DataFile            // 当前正在执行写入的活跃文件
 	oldFiles   map[uint32]*data.DataFile // 已经“写满”的旧数据文件
 	index      index.Indexer             // 索引部分，存储数据位置信息的地方
+}
+
+// NewDB 创建数据库实例
+func NewDB(options Options) (*DB, error) {
+	return &DB{
+		option:     options,
+		fileIds:    []int{},
+		lock:       new(sync.RWMutex),
+		activeFile: nil,
+		oldFiles:   make(map[uint32]*data.DataFile),
+		index:      index.NewBTree(),
+	}, nil
 }
 
 func Open(opt Options) (*DB, error) {
@@ -48,18 +61,6 @@ func Open(opt Options) (*DB, error) {
 		return nil, err
 	}
 	return db, nil
-}
-
-// NewDB 创建数据库实例
-func NewDB(options Options) (*DB, error) {
-	return &DB{
-		option:     options,
-		fileIds:    []int{},
-		lock:       new(sync.RWMutex),
-		activeFile: nil,
-		oldFiles:   make(map[uint32]*data.DataFile),
-		index:      index.NewBTree(),
-	}, nil
 }
 
 // Put 向 db 之中添加一条新的 logRecord 信息，将 logRecord 添加到活跃文件之后，还要将其添加到索引之中。
@@ -122,6 +123,11 @@ func (db *DB) Delete(key []byte) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
+	// 如果 Key 不存在的话，则进行返回。
+	if _, ok := db.index.Get(key); !ok {
+		return ErrKeyNotFound
+	}
+
 	recToDelete := &data.LogRecord{
 		Key:  key,
 		Type: data.LogRecordToDelete,
@@ -133,9 +139,7 @@ func (db *DB) Delete(key []byte) error {
 	}
 
 	// 内存索引更新
-	if ok := db.index.Delete(key); !ok {
-		return ErrIndexUpdateFailed
-	}
+	db.index.Delete(key)
 	return nil
 }
 
@@ -246,14 +250,14 @@ func (db *DB) loadDataFile() error {
 func (db *DB) loadIndex() error {
 	// 判断是否存在数据文件，如果 fileIDs 为空，必然是不存在数据文件
 	if len(db.fileIds) == 0 {
-		return ErrDataFileNotFound
+		return nil
 	}
 
 	var dataFile *data.DataFile
-	for _, fileId := range db.fileIds {
+	for i, fileId := range db.fileIds {
 		var offset int64 = 0
 		// 不要重复打开数据文件！已打开的存在于 db 结构体的 oldFiles, activeFile 字段之中
-		if fileId == len(db.fileIds)-1 {
+		if i == len(db.fileIds)-1 {
 			dataFile = db.activeFile
 		} else {
 			dataFile = db.oldFiles[uint32(fileId)]
@@ -264,6 +268,9 @@ func (db *DB) loadIndex() error {
 			// 根据 offset 从 DataFile 之中提取出 LogRecord；但其实是想要获取对应 LogRecord 的Key以及长度，以便于更新索引
 			record, size, err := dataFile.ReadLogRecord(offset)
 			if err != nil {
+				if err == io.EOF {
+					break
+				}
 				return err
 			}
 

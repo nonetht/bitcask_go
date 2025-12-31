@@ -60,7 +60,7 @@ func TestDecodeLogRecord(t *testing.T) {
 	assert.NotNil(t, h1)
 	// 因为是 Decode 的是 header 部分，那么算上crc + Type + keySize + valueSize 部分在[]byte长度就是7
 	assert.Equal(t, int64(7), size1)
-	// 下面的长数字是通过读取 h1 也就是 &LogRecordHeader 部分来提取得到的
+	// 下面的长数字是通过读取 h1 也就是 &logRecordHeader 部分来提取得到的
 	assert.Equal(t, uint32(2532332136), h1.crc)
 	assert.Equal(t, LogRecordNormal, h1.recordType)
 	assert.Equal(t, uint32(4), h1.keySize)

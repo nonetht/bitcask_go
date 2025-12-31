@@ -44,7 +44,7 @@ func Open(opt Options) (*DB, error) {
 	}
 
 	// 填充 db 结构体之中的 Indexer 字段
-	if err := db.loadIndexFromDataFile(); err != nil {
+	if err := db.loadIndex(); err != nil {
 		return nil, err
 	}
 	return db, nil
@@ -225,6 +225,7 @@ func (db *DB) loadDataFile() error {
 
 	// 对 dataFileIds 进行排序
 	sort.Ints(dataFileIds)
+
 	for i, fileId := range dataFileIds {
 		if i == len(dataFileIds)-1 {
 			db.activeFile, err = data.OpenDataFile(db.option.DirPath, uint32(fileId))
@@ -242,8 +243,8 @@ func (db *DB) loadDataFile() error {
 	return nil
 }
 
-func (db *DB) loadIndexFromDataFile() error {
-	// 判断是否存在数据文件
+func (db *DB) loadIndex() error {
+	// 判断是否存在数据文件，如果 fileIDs 为空，必然是不存在数据文件
 	if len(db.fileIds) == 0 {
 		return ErrDataFileNotFound
 	}
@@ -255,24 +256,34 @@ func (db *DB) loadIndexFromDataFile() error {
 			return err
 		}
 
-		record, i, err := dataFile.ReadLogRecord(offset)
-		if err != nil {
-			return err
-		}
+		// 持续读取，直到文件末尾
+		for {
+			// 根据 offset 从 DataFile 之中提取出 LogRecord；但其实是想要获取对应 LogRecord 的Key以及长度，以便于更新索引
+			record, i, err := dataFile.ReadLogRecord(offset)
+			if err != nil {
+				return err
+			}
 
-		// 创建一条新的 pos
-		pos := &data.LogRecordPos{
-			Fid:    uint32(fileId),
-			Offset: offset,
-		}
+			// 创建一条新的 pos
+			pos := &data.LogRecordPos{
+				Fid:    uint32(fileId),
+				Offset: offset,
+			}
 
-		// 向索引之中添加该 pos
-		if ok := db.index.Put(record.Key, pos); !ok {
-			return ErrIndexUpdateFailed
-		}
+			// 处理删除类型的内容
+			if record.Type == data.LogRecordToDelete {
+				if ok := db.index.Delete(record.Key); !ok {
+					return ErrIndexUpdateFailed
+				}
+			} else {
+				// 向索引之中添加该 pos
+				if ok := db.index.Put(record.Key, pos); !ok {
+					return ErrIndexUpdateFailed
+				}
+			}
 
-		offset += i // 递增 offset 部分内容
+			offset += i // 递增 offset 部分内容
+		}
 	}
-
 	return nil
 }

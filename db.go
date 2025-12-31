@@ -210,12 +210,11 @@ func (db *DB) loadDataFile() error {
 	// 遍历路径下所有 .data 后缀文件，将其添加到 dataFileIds 数组之中
 	// 其中涉及到了很多我之前没接触过的方法：strings.HasSuffix, strings.Split ...
 	var dataFileIds []int
-	db.fileIds = dataFileIds
 
 	for _, dirEntry := range dirEntries {
 		if strings.HasSuffix(dirEntry.Name(), data.DataFileNameSuffix) {
 			splitNames := strings.Split(dirEntry.Name(), ".")
-			fileName, err := strconv.Atoi(splitNames[0])
+			fileName, err := strconv.Atoi(splitNames[0]) // convert string to int
 			if err != nil {
 				return err
 			}
@@ -225,6 +224,7 @@ func (db *DB) loadDataFile() error {
 
 	// 对 dataFileIds 进行排序
 	sort.Ints(dataFileIds)
+	db.fileIds = dataFileIds
 
 	for i, fileId := range dataFileIds {
 		if i == len(dataFileIds)-1 {
@@ -249,17 +249,20 @@ func (db *DB) loadIndex() error {
 		return ErrDataFileNotFound
 	}
 
+	var dataFile *data.DataFile
 	for _, fileId := range db.fileIds {
 		var offset int64 = 0
-		dataFile, err := data.OpenDataFile(db.option.DirPath, uint32(fileId))
-		if err != nil {
-			return err
+		// 不要重复打开数据文件！已打开的存在于 db 结构体的 oldFiles, activeFile 字段之中
+		if fileId == len(db.fileIds)-1 {
+			dataFile = db.activeFile
+		} else {
+			dataFile = db.oldFiles[uint32(fileId)]
 		}
 
 		// 持续读取，直到文件末尾
 		for {
 			// 根据 offset 从 DataFile 之中提取出 LogRecord；但其实是想要获取对应 LogRecord 的Key以及长度，以便于更新索引
-			record, i, err := dataFile.ReadLogRecord(offset)
+			record, size, err := dataFile.ReadLogRecord(offset)
 			if err != nil {
 				return err
 			}
@@ -282,7 +285,7 @@ func (db *DB) loadIndex() error {
 				}
 			}
 
-			offset += i // 递增 offset 部分内容
+			offset += size // 递增 offset 部分内容
 		}
 	}
 	return nil

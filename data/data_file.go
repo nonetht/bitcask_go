@@ -2,8 +2,8 @@ package data
 
 import (
 	"bitcask-gown/fio"
-	"bytes"
 	"fmt"
+	"io"
 	"path/filepath"
 )
 
@@ -56,30 +56,48 @@ func (fio *DataFile) Close() error {
 
 // ReadLogRecord 从 fio 这个 DataFile 之中读取 LogRecord 以及 Size 信息
 func (fio *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
-	// 我考虑是先读取 logRecordHeader，随后根据对应的 Key，Value 的长度，来进一步读取实际的 Key，Value
-	headerBuf, err := fio.readNBytes(15, offset)
+	fileSize, err := fio.IOManager.Size()
 	if err != nil {
 		return nil, 0, err
 	}
 
-	KeySize, ValueSize := int(header[5:8]), int(header[8:12])
-	Key, Value := make([]byte, KeySize), make([]byte, ValueSize)
+	var heaSize int64 = maxLogRecordHeaderSize
+	// 处理其中的 corner case，就是我们的 maxHeaderSize + offset < fileSize。如果条件为真，那么将 heaSize 定为
+	if heaSize+offset > fileSize {
+		heaSize = fileSize - offset
+	}
 
-	key, err := fio.readNBytes(KeySize, offset)
+	buf, err := fio.readNBytes(heaSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	value, err := fio.readNBytes(ValueSize, offset)
+	header, headerSize := decodeLogRecordHeader(buf)
+	if header == nil {
+		return nil, 0, io.EOF
+	}
+
+	if header.CRC == 0 && header.KeySize == 0 && header.ValueSize == 0 {
+		return nil, 0, io.EOF
+	}
+
+	// 在读取到 header 之后，我们转向获取对应的 keySize，valueSize
+	keySize, valueSize := int64(header.KeySize), int64(header.ValueSize)
+	var recSize = headerSize + keySize + valueSize
+
+	logRecord := &LogRecord{
+		Type: header.Type,
+	}
+
+	kvBuf, err := fio.readNBytes(keySize+valueSize, offset+headerSize)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	return &LogRecord{
-		Key: key,
-		Value: value,
-		Type: //
-	}, KeySize + ValueSize, nil
+	key, value := kvBuf[:keySize], kvBuf[keySize:]
+	logRecord.Key = key
+	logRecord.Value = value
+	return logRecord, recSize, nil
 }
 
 // 读取 df 上的前 N 个字节，将其存储在 buf 变量上

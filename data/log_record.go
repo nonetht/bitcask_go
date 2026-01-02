@@ -47,26 +47,27 @@ func EncodeLogRecord(record *LogRecord) ([]byte, int) {
 }
 
 // 对字节数组之中的 Header 信息进行解码，将其由 []byte 转化为 logRecordHeader
-func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int) {
+func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
 	if len(buf) < 5 {
 		return nil, 0
 	}
 
 	crc, typ := binary.LittleEndian.Uint32(buf[0:4]), buf[4]
-	index := 5
+	header := &logRecordHeader{
+		CRC:  crc,
+		Type: typ,
+	}
 
-	// 解码 KeySize，从 index 开始读，读出数值以及长度
-	keySize, n := binary.Varint(buf[index:])
-	index += n
+	var headerSize uint32 = 5
+	// 取出对应的 Key 以及其对应长度 kl
+	keySize, kl := binary.Varint(buf[4:])
+	header.KeySize = uint32(keySize)
+	headerSize += uint32(kl)
 
-	// 解码 ValueSize 从 index 开始读，读出数值以及长度
-	valueSize, n := binary.Varint(buf[index:])
-	index += n
+	// 取出对应 Value 以及对应长度 vl
+	valueSize, vl := binary.Varint(buf[headerSize:])
+	header.ValueSize = uint32(valueSize)
+	headerSize += uint32(vl)
 
-	return &logRecordHeader{
-		CRC:       crc,
-		Type:      typ,
-		KeySize:   uint32(keySize),
-		ValueSize: uint32(valueSize),
-	}, index
+	return header, int64(headerSize)
 }

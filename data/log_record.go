@@ -1,6 +1,9 @@
 package data
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"hash/crc32"
+)
 
 type LogRecordType = byte
 
@@ -70,4 +73,13 @@ func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
 	headerSize += uint32(vl)
 
 	return header, int64(headerSize)
+}
+
+func getLogRecordCRC(rec *LogRecord, headerBody []byte) uint32 {
+
+	crc := crc32.ChecksumIEEE(headerBody)
+
+	crc = crc32.Update(crc, crc32.IEEETable, rec.Key)
+	crc = crc32.Update(crc, crc32.IEEETable, rec.Value)
+	return crc
 }

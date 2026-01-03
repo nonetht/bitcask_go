@@ -45,7 +45,24 @@ type LogRecordPos struct {
 	Offset int64
 }
 
+// EncodeLogRecord 将 LogRecord 进行编码操作，转换为 []byte 字节数组
 func EncodeLogRecord(record *LogRecord) ([]byte, int) {
+	tempBuf := make([]byte, maxLogRecordHeaderSize)
+	tempBuf[5] = record.Type
+	keySize, valueSize := len(record.Key), len(record.Value)
+	// 应该从索引值 6 之后写入
+	index := binary.PutVarint(tempBuf[6:], int64(keySize))
+	// 从索引值 6 + index 开始写入
+	index += binary.PutVarint(tempBuf[6+index:], int64(valueSize))
+
+	headerSize := 5 + index
+	recSize := headerSize + keySize + valueSize
+	buf := make([]byte, recSize)
+
+	copy(buf, tempBuf[:headerSize]) // tempBuf 可能没有用完
+	copy(buf[headerSize:], record.Key)
+	copy(buf[headerSize+keySize:], record.Value)
+
 	return nil, 0
 }
 
@@ -75,6 +92,7 @@ func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
 	return header, int64(headerSize)
 }
 
+// 计算出 CRC 校验值
 func getLogRecordCRC(rec *LogRecord, headerBody []byte) uint32 {
 
 	crc := crc32.ChecksumIEEE(headerBody)

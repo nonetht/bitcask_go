@@ -2,12 +2,17 @@ package data
 
 import (
 	"bitcask-gown/fio"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
 )
 
 const DataFileNameSuffix = ".data"
+
+var (
+	ErrInvalidCRC = errors.New("invalid crc value, log record maybe corrupted")
+)
 
 // DataFile 负责文件部分内容，
 type DataFile struct {
@@ -97,6 +102,11 @@ func (fio *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 	key, value := kvBuf[:keySize], kvBuf[keySize:]
 	logRecord.Key = key
 	logRecord.Value = value
+
+	crc := getLogRecordCRC(logRecord, buf[4:])
+	if crc != header.CRC {
+		return nil, 0, ErrInvalidCRC
+	}
 	return logRecord, recSize, nil
 }
 

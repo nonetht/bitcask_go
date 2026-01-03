@@ -46,24 +46,29 @@ type LogRecordPos struct {
 }
 
 // EncodeLogRecord 将 LogRecord 进行编码操作，转换为 []byte 字节数组
-func EncodeLogRecord(record *LogRecord) ([]byte, int) {
+func EncodeLogRecord(record *LogRecord) ([]byte, int64) {
 	tempBuf := make([]byte, maxLogRecordHeaderSize)
-	tempBuf[5] = record.Type
+	tempBuf[4] = record.Type
 	keySize, valueSize := len(record.Key), len(record.Value)
-	// 应该从索引值 6 之后写入
-	index := binary.PutVarint(tempBuf[6:], int64(keySize))
-	// 从索引值 6 + index 开始写入
-	index += binary.PutVarint(tempBuf[6+index:], int64(valueSize))
+	// 应该从索引值 5 之后写入
+	index := binary.PutVarint(tempBuf[5:], int64(keySize))
+	// 从索引值 5 + index 开始写入
+	index += binary.PutVarint(tempBuf[5+index:], int64(valueSize))
 
-	headerSize := 5 + index
+	headerSize := 5 + index // 5 是代表其中 CRC + Type 得到的类型
+	// 将 crc 也考虑在内；其中之前的实现，使用的 CheckSumIEEE 方法，包含了 headerBody 以及 record
+	crc := getLogRecordCRC(record, tempBuf[4:headerSize])
+	binary.LittleEndian.PutUint32(tempBuf, crc)
+
 	recSize := headerSize + keySize + valueSize
 	buf := make([]byte, recSize)
 
+	// copy -> func copy(dst, src []Type) int
 	copy(buf, tempBuf[:headerSize]) // tempBuf 可能没有用完
 	copy(buf[headerSize:], record.Key)
 	copy(buf[headerSize+keySize:], record.Value)
 
-	return nil, 0
+	return buf, int64(recSize)
 }
 
 // 对字节数组之中的 Header 信息进行解码，将其由 []byte 转化为 logRecordHeader
@@ -80,7 +85,7 @@ func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
 
 	var headerSize uint32 = 5
 	// 取出对应的 Key 以及其对应长度 kl
-	keySize, kl := binary.Varint(buf[4:])
+	keySize, kl := binary.Varint(buf[5:])
 	header.KeySize = uint32(keySize)
 	headerSize += uint32(kl)
 

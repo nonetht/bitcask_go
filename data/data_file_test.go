@@ -116,7 +116,7 @@ func TestDataFile_ReadLogRecord(t *testing.T) {
 	rec3 := &LogRecord{
 		Key:   []byte("1"),
 		Value: []byte("1"),
-		Type:  LogRecordDeleted,
+		Type:  LogRecordToDelete,
 	}
 
 	res3, size3 := EncodeLogRecord(rec3) // 解码得到的字节数组

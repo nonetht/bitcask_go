@@ -72,6 +72,7 @@ func (fio *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 		heaSize = fileSize - offset
 	}
 
+	// buf 长度为 heaSize 的长度
 	buf, err := fio.readNBytes(heaSize, offset)
 	if err != nil {
 		return nil, 0, err
@@ -103,7 +104,8 @@ func (fio *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 	logRecord.Key = key
 	logRecord.Value = value
 
-	crc := getLogRecordCRC(logRecord, buf[4:])
+	// 在计算其中 CRC 校验值的时候，我们不将其中 crc 部分考虑在内
+	crc := getLogRecordCRC(logRecord, buf[4:headerSize])
 	if crc != header.CRC {
 		return nil, 0, ErrInvalidCRC
 	}
@@ -111,8 +113,8 @@ func (fio *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 }
 
 // 读取 df 上的前 N 个字节，将其存储在 buf 变量上
-func (df *DataFile) readNBytes(n int64, offset int64) (buf []byte, err error) {
-	b := make([]byte, n)
+func (df *DataFile) readNBytes(n int64, offset int64) (b []byte, err error) {
+	b = make([]byte, n)
 	_, err = df.IOManager.Read(b, offset)
 	if err != nil {
 		return nil, err

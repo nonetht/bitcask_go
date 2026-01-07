@@ -34,7 +34,6 @@ vendor/
 Thumbs.db
 
 # Project specific - data files
-data/
 tmp/
 
 # Debug files

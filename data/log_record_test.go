@@ -41,7 +41,7 @@ func TestEncodeLogRecord(t *testing.T) {
 	rec3 := &LogRecord{
 		Key:   []byte("name"),
 		Value: []byte("bitcask-go"),
-		Type:  LogRecordDeleted,
+		Type:  LogRecordToDelete,
 	}
 
 	res3, n3 := EncodeLogRecord(rec3)
@@ -61,10 +61,10 @@ func TestDecodeLogRecord(t *testing.T) {
 	// 因为是 Decode 的是 header 部分，那么算上crc + Type + keySize + valueSize 部分在[]byte长度就是7
 	assert.Equal(t, int64(7), size1)
 	// 下面的长数字是通过读取 h1 也就是 &logRecordHeader 部分来提取得到的
-	assert.Equal(t, uint32(2532332136), h1.crc)
-	assert.Equal(t, LogRecordNormal, h1.recordType)
-	assert.Equal(t, uint32(4), h1.keySize)
-	assert.Equal(t, uint32(10), h1.valueSize)
+	assert.Equal(t, uint32(2532332136), h1.CRC)
+	assert.Equal(t, LogRecordNormal, h1.Type)
+	assert.Equal(t, uint32(4), h1.KeySize)
+	assert.Equal(t, uint32(10), h1.ValueSize)
 
 	// value is nil
 	headerBuf2 := []byte{9, 252, 88, 14, 0, 8, 0}
@@ -74,10 +74,10 @@ func TestDecodeLogRecord(t *testing.T) {
 
 	assert.NotNil(t, h2)
 	assert.Equal(t, int64(7), size2)
-	assert.Equal(t, uint32(240712713), h2.crc)
-	assert.Equal(t, LogRecordNormal, h2.recordType)
-	assert.Equal(t, uint32(4), h2.keySize)
-	assert.Equal(t, uint32(0), h2.valueSize)
+	assert.Equal(t, uint32(240712713), h2.CRC)
+	assert.Equal(t, LogRecordNormal, h2.Type)
+	assert.Equal(t, uint32(4), h2.KeySize)
+	assert.Equal(t, uint32(0), h2.ValueSize)
 
 	headerBuf3 := []byte{43, 153, 86, 17, 1, 8, 20}
 	h3, size3 := decodeLogRecordHeader(headerBuf3)
@@ -85,10 +85,10 @@ func TestDecodeLogRecord(t *testing.T) {
 	//t.Log(size3) // 7
 	assert.NotNil(t, h3)
 	assert.Equal(t, int64(7), size3)
-	assert.Equal(t, uint32(290887979), h3.crc)
-	assert.Equal(t, LogRecordDeleted, h3.recordType)
-	assert.Equal(t, uint32(4), h3.keySize)
-	assert.Equal(t, uint32(10), h3.valueSize)
+	assert.Equal(t, uint32(290887979), h3.CRC)
+	assert.Equal(t, LogRecordToDelete, h3.Type)
+	assert.Equal(t, uint32(4), h3.KeySize)
+	assert.Equal(t, uint32(10), h3.ValueSize)
 }
 
 // 虽然和上一个函数测试的内容大致相同，只是，这个函数是为了测试 getLogRecordCRC 方法
@@ -119,7 +119,7 @@ func TestGetLogRecordCRC(t *testing.T) {
 	rec3 := &LogRecord{
 		Key:   []byte("name"),
 		Value: []byte("bitcask-go"),
-		Type:  LogRecordDeleted,
+		Type:  LogRecordToDelete,
 	}
 
 	headerBuf3 := []byte{43, 153, 86, 17, 1, 8, 20}

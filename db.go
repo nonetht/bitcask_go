@@ -143,6 +143,43 @@ func (db *DB) Delete(key []byte) error {
 	return nil
 }
 
+// Close 数据库关闭操作
+func (db *DB) Close() error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	// 将 activeFile 关闭
+	err := db.activeFile.Close()
+	if err != nil {
+		return err
+	}
+
+	for _, oldFile := range db.oldFiles {
+		err := oldFile.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	db.oldFiles = nil
+	db.fileIds = []int{}
+
+	return nil
+}
+
+// Sync 将数据库之中的当前 activeFile 进行持久化即可
+func (db *DB) Sync() error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	err := db.activeFile.Sync()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // 理解为 Put 方法的辅助函数，对于这种私有辅助方法，可以不加锁
 func (db *DB) appendLogRecord(record *data.LogRecord) (*data.LogRecordPos, error) {
 	// 说明是第一次创建的 db 数据库实例，其 fileID 为0.

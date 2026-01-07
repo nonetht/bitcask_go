@@ -3,6 +3,7 @@ package index
 import (
 	"bitcask-gown/data"
 	"bytes"
+	"sort"
 	"sync"
 
 	"github.com/google/btree"
@@ -54,6 +55,7 @@ func (b *BTree) Get(key []byte) (*data.LogRecordPos, bool) {
 	return it.(*Item).pos, true
 }
 
+// Item 我们向 btree 之中就是添加 Item
 type Item struct {
 	key []byte
 	pos *data.LogRecordPos
@@ -61,4 +63,84 @@ type Item struct {
 
 func (ai *Item) Less(bi btree.Item) bool {
 	return bytes.Compare(ai.key, bi.(*Item).key) < 0 // TODO: 类型断言是什么来着？
+}
+
+type btreeIterator struct {
+	currIndex int
+	reverse   bool
+	values    []*Item
+}
+
+func (b btreeIterator) Rewind() {
+	b.currIndex = 0
+}
+
+// Seek 根据传入的 key 查找到第一个大于等于的 key，根据这个 key 开始遍历
+func (b btreeIterator) Seek(key []byte) {
+	if b.reverse {
+		// Search uses binary search to find and return the smallest index i in [0, n) at which f(i) is true
+		b.currIndex = sort.Search(len(b.values), func(i int) bool {
+			return bytes.Compare(b.values[i].key, key) <= 0
+		})
+	} else {
+		b.currIndex = sort.Search(len(b.values), func(i int) bool {
+			return bytes.Compare(b.values[i].key, key) >= 0
+		})
+	}
+}
+
+func (b btreeIterator) Next() {
+	b.currIndex++
+}
+
+func (b btreeIterator) Valid() bool {
+	return b.currIndex < len(b.values)
+}
+
+func (b btreeIterator) Key() []byte {
+	return b.values[b.currIndex].key
+}
+
+func (b btreeIterator) Value() *data.LogRecordPos {
+	return b.values[b.currIndex].pos
+}
+
+func (b btreeIterator) Close() {
+	b.values = nil
+}
+
+func (bt *BTree) Iterator(reverse bool) *btreeIterator {
+	if bt == nil {
+		return nil
+	}
+
+	bt.lock.RLock()
+	defer bt.lock.RUnlock()
+
+	return newBTreeIterator(bt.tree, reverse)
+}
+
+func newBTreeIterator(bt *btree.BTree, reverse bool) *btreeIterator {
+	var idx int
+	values := make([]*Item, bt.Len())
+
+	saveValues := func(it btree.Item) bool {
+		values[idx] = it.(*Item)
+		idx++
+		return true // 返回 false 会终止遍历，但是我也没有执行遍历...
+	}
+
+	if reverse {
+		// 从大到小，倒序就是
+		bt.Descend(saveValues) // Descend 函数不断调用函数 saveValues，直到其返回 false
+	} else {
+		// 从小到大，正序
+		bt.Ascend(saveValues)
+	}
+
+	return &btreeIterator{
+		currIndex: 0,
+		reverse:   reverse,
+		values:    values,
+	}
 }

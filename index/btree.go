@@ -67,16 +67,16 @@ func (ai *Item) Less(bi btree.Item) bool {
 
 type btreeIterator struct {
 	currIndex int
-	reverse   bool
+	reverse   bool // 如果为 true，则是倒序遍历；反之则是正序遍历
 	values    []*Item
 }
 
-func (b btreeIterator) Rewind() {
+func (b *btreeIterator) Rewind() {
 	b.currIndex = 0
 }
 
 // Seek 根据传入的 key 查找到第一个大于等于的 key，根据这个 key 开始遍历
-func (b btreeIterator) Seek(key []byte) {
+func (b *btreeIterator) Seek(key []byte) {
 	if b.reverse {
 		// Search uses binary search to find and return the smallest index i in [0, n) at which f(i) is true
 		b.currIndex = sort.Search(len(b.values), func(i int) bool {
@@ -89,23 +89,23 @@ func (b btreeIterator) Seek(key []byte) {
 	}
 }
 
-func (b btreeIterator) Next() {
+func (b *btreeIterator) Next() {
 	b.currIndex++
 }
 
-func (b btreeIterator) Valid() bool {
+func (b *btreeIterator) Valid() bool {
 	return b.currIndex < len(b.values)
 }
 
-func (b btreeIterator) Key() []byte {
+func (b *btreeIterator) Key() []byte {
 	return b.values[b.currIndex].key
 }
 
-func (b btreeIterator) Value() *data.LogRecordPos {
+func (b *btreeIterator) Value() *data.LogRecordPos {
 	return b.values[b.currIndex].pos
 }
 
-func (b btreeIterator) Close() {
+func (b *btreeIterator) Close() {
 	b.values = nil
 }
 

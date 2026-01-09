@@ -41,7 +41,7 @@ func Open(opt Options) (*DB, error) {
 
 	// 打开对应的 DirPath 文件夹，如果不存在的话，则创建一个新的文件夹
 	if _, err := os.Stat(opt.DirPath); os.IsNotExist(err) {
-		if err := os.Mkdir(opt.DirPath, os.ModePerm); err != nil {
+		if err := os.MkdirAll(opt.DirPath, os.ModePerm); err != nil {
 			return nil, err
 		}
 	}
@@ -95,23 +95,35 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, ErrIndexNotFound
 	}
 
-	var dataFile *data.DataFile
-
-	//
-	if pos.Fid == db.activeFile.FileID {
-		dataFile = db.activeFile
-	} else {
-		dataFile = db.oldFiles[pos.Fid]
-		if dataFile == nil {
-			return nil, ErrDataFileNotFound
-		}
-	}
-
-	record, _, err := dataFile.ReadLogRecord(pos.Offset)
+	val, err := db.getValueByPos(pos)
 	if err != nil {
 		return nil, err
 	}
-	return record.Value, nil
+	return val, nil
+}
+
+// 通过 pos 来获取对应的 dataFile -> LogRecord -> Value
+func (db *DB) getValueByPos(pos *data.LogRecordPos) ([]byte, error) {
+	var dataFile *data.DataFile
+	if db.activeFile.FileID == pos.Fid {
+		dataFile = db.activeFile
+	} else if db.oldFiles[pos.Fid] != nil {
+		dataFile = db.oldFiles[pos.Fid]
+	} else {
+		return nil, ErrDataFileNotFound
+	}
+
+	rec, _, err := dataFile.ReadLogRecord(pos.Offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// 额外判断，如果找到的是待删除的 LogRecord ，直接返回未找到的错误。
+	if rec.Type == data.LogRecordToDelete {
+		return nil, ErrKeyNotFound
+	}
+
+	return rec.Value, nil
 }
 
 // Delete 采用追加写入的方式来删除一条数据，并且更新索引
@@ -138,9 +150,11 @@ func (db *DB) Delete(key []byte) error {
 		return err
 	}
 
-	// 内存索引更新
-	db.index.Delete(key)
-	return nil
+	// 内存索引更新，ok 返回 true 的话，肯定返回 nil
+	if ok := db.index.Delete(key); ok {
+		return nil
+	}
+	return ErrIndexDeleteFailed
 }
 
 // Close 数据库关闭操作
@@ -316,9 +330,7 @@ func (db *DB) loadIndex() error {
 
 			// 处理删除类型的内容
 			if record.Type == data.LogRecordToDelete {
-				if ok := db.index.Delete(record.Key); !ok {
-					return ErrIndexUpdateFailed
-				}
+				db.index.Delete(record.Key) // 假设已经在 Index 之中被删除了，会导致返回错误。
 			} else {
 				// 向索引之中添加该 pos
 				if ok := db.index.Put(record.Key, pos); !ok {
@@ -330,28 +342,4 @@ func (db *DB) loadIndex() error {
 		}
 	}
 	return nil
-}
-
-// 通过 pos 来获取对应的 dataFile -> LogRecord -> Value
-func (db *DB) getValueByPos(pos *data.LogRecordPos) ([]byte, error) {
-	var dataFile *data.DataFile
-	if db.activeFile.FileID == pos.Fid {
-		dataFile = db.activeFile
-	} else if db.oldFiles[pos.Fid] != nil {
-		dataFile = db.oldFiles[pos.Fid]
-	} else {
-		return nil, ErrDataFileNotFound
-	}
-
-	rec, _, err := dataFile.ReadLogRecord(pos.Offset)
-	if err != nil {
-		return nil, err
-	}
-
-	// 额外判断，如果找到的是待删除的 LogRecord ，直接返回未找到的错误。
-	if rec.Type == data.LogRecordToDelete {
-		return nil, ErrDataFileNotFound
-	}
-
-	return rec.Value, nil
 }

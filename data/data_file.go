@@ -25,18 +25,24 @@ type DataFile struct {
 func OpenDataFile(dirPath string, fileId uint32) (*DataFile, error) {
 	// 1. 拼接文件名，例如：/tmp/bitcask/000000001.data
 	fileName := filepath.Join(dirPath, fmt.Sprintf("%09d", fileId)+DataFileNameSuffix)
-	return NewDataFile(fileName, fileId)
+	return newDataFile(fileName, fileId)
 }
 
-func NewDataFile(fileName string, fileId uint32) (*DataFile, error) {
+func newDataFile(fileName string, fileId uint32) (*DataFile, error) {
 	ioManager, err := fio.NewFileIOManager(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	// 根据当前文件大小来获取 WriteOff 偏移量
+	size, err := ioManager.Size()
 	if err != nil {
 		return nil, err
 	}
 
 	return &DataFile{
 		FileID:    fileId,
-		WriteOff:  0,
+		WriteOff:  size,
 		IOManager: ioManager,
 	}, nil
 }

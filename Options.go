@@ -6,6 +6,12 @@ type Options struct {
 	SyncWrites   bool   // 是否选择执行持久化
 }
 
+var DefaultOptions = Options{
+	DirPath:      ".",
+	DataFileSize: 256 * 1024 * 1024,
+	SyncWrites:   false,
+}
+
 func checkOptions(opt Options) error {
 	if len(opt.DirPath) == 0 {
 		return ErrDirPathIsEmpty

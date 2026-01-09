@@ -10,5 +10,5 @@ var (
 	ErrDirPathIsEmpty      = errors.New("directory path is empty")
 	ErrInvalidDataFileSize = errors.New("invalid data file size, database file size must be greater than 0")
 	ErrKeyNotFound         = errors.New("key not found")
-	ErrInvalidCRC          = errors.New("invalid CRC")
+	ErrIndexDeleteFailed   = errors.New("index delete failed")
 )

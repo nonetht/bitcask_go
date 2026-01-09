@@ -62,7 +62,7 @@ type Item struct {
 }
 
 func (ai *Item) Less(bi btree.Item) bool {
-	return bytes.Compare(ai.key, bi.(*Item).key) < 0 // TODO: 类型断言是什么来着？
+	return bytes.Compare(ai.key, bi.(*Item).key) < 0
 }
 
 type btreeIterator struct {
@@ -109,7 +109,7 @@ func (b *btreeIterator) Close() {
 	b.values = nil
 }
 
-func (bt *BTree) Iterator(reverse bool) *btreeIterator {
+func (bt *BTree) Iterator(reverse bool) Iterator { // 接口实现的时候，务必保证签名完全一致。
 	if bt == nil {
 		return nil
 	}

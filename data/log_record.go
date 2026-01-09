@@ -97,11 +97,9 @@ func decodeLogRecordHeader(buf []byte) (*logRecordHeader, int64) {
 	return header, int64(headerSize)
 }
 
-// 计算出 CRC 校验值
+// 计算出 CRC 校验值，先算 HeaderBody 部分，随后累加计算 Key, Value 的内容
 func getLogRecordCRC(rec *LogRecord, headerBody []byte) uint32 {
-
 	crc := crc32.ChecksumIEEE(headerBody)
-
 	crc = crc32.Update(crc, crc32.IEEETable, rec.Key)
 	crc = crc32.Update(crc, crc32.IEEETable, rec.Value)
 	return crc

@@ -161,9 +161,6 @@ func (db *DB) Close() error {
 		}
 	}
 
-	db.oldFiles = nil
-	db.fileIds = []int{}
-
 	return nil
 }
 
@@ -333,4 +330,28 @@ func (db *DB) loadIndex() error {
 		}
 	}
 	return nil
+}
+
+// 通过 pos 来获取对应的 dataFile -> LogRecord -> Value
+func (db *DB) getValueByPos(pos *data.LogRecordPos) ([]byte, error) {
+	var dataFile *data.DataFile
+	if db.activeFile.FileID == pos.Fid {
+		dataFile = db.activeFile
+	} else if db.oldFiles[pos.Fid] != nil {
+		dataFile = db.oldFiles[pos.Fid]
+	} else {
+		return nil, ErrDataFileNotFound
+	}
+
+	rec, _, err := dataFile.ReadLogRecord(pos.Offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// 额外判断，如果找到的是待删除的 LogRecord ，直接返回未找到的错误。
+	if rec.Type == data.LogRecordToDelete {
+		return nil, ErrDataFileNotFound
+	}
+
+	return rec.Value, nil
 }

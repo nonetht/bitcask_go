@@ -112,7 +112,7 @@ func (fio *DataFile) ReadLogRecord(offset int64) (*LogRecord, int64, error) {
 	return logRecord, recSize, nil
 }
 
-// 读取 df 上的前 N 个字节，将其存储在 buf 变量上
+// 从 offest 的位置上开始，读取 df 上的前 N 个字节，将其存储在 buf 变量上
 func (df *DataFile) readNBytes(n int64, offset int64) (b []byte, err error) {
 	b = make([]byte, n)
 	_, err = df.IOManager.Read(b, offset)

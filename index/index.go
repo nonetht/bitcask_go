@@ -12,6 +12,7 @@ type Indexer interface {
 	Delete(key []byte) bool
 	// Get 根据 key，从索引中，取出对应位置信息
 	Get(key []byte) (*data.LogRecordPos, bool)
+	Iterator(reverse bool) Iterator
 }
 
 // Iterator 通用索引迭代器的接口

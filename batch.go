@@ -56,6 +56,7 @@ func (wb *WriteBatch) Delete(key []byte) error {
 	return nil
 }
 
+// Commit 将待写入区域的 logRecord 全部写入，并更新索引
 func (wb *WriteBatch) Commit() error {
 	// 保证线程安全
 	wb.db.lock.Lock()
@@ -71,20 +72,22 @@ func (wb *WriteBatch) Commit() error {
 		return ErrExceedMaxBatchNum
 	}
 
+	// 创建 positions 用户存储 key - pos 的映射
 	positions := make(map[string]*data.LogRecordPos)
 
 	// 将所有的 logRecord 添加到 dataFile 之中
-	for key, rec := range wb.pendingWrites {
+	for _, rec := range wb.pendingWrites {
+		// appendLogRecord 是 db.go 之中的方法，负责追加写入到 activeFile
 		pos, err := wb.db.appendLogRecord(rec)
 		if err != nil {
 			return err
 		}
-		positions[key] = pos // 将 key - pos 存储到 positions 之中，便于后期索引更新
+		positions[string(rec.Key)] = pos // 将 key - pos 存储到 positions 之中，便于后期索引更新
 	}
 
 	// 写入到最后，我们需要创建一个新的类型为 logRecordTxnFinshed 的记录，然后写入到 dataFile 之中
 	lstRec := &data.LogRecord{
-		Key:  []byte{},
+		Key:  []byte("txn-finished"), // key 内容不重要
 		Type: data.LogRecordTxnFinished,
 	}
 	_, err := wb.db.appendLogRecord(lstRec)
@@ -92,10 +95,18 @@ func (wb *WriteBatch) Commit() error {
 		return err
 	}
 
-	// 通过 positions 更新索引
-	for key, pos := range positions {
-		if ok := wb.db.index.Put([]byte(key), pos); !ok {
-			return ErrIndexUpdateFailed
+	// 根据配置选择是否刷盘
+	if wb.setup.SyncWrites {
+		if err := wb.db.Sync(); err != nil {
+			return err
+		}
+	}
+
+	for _, rec := range wb.pendingWrites {
+		if rec.Type == data.LogRecordNormal {
+			wb.db.index.Delete(rec.Key)
+		} else if rec.Type == data.LogRecordToDelete {
+			wb.db.index.Put(rec.Key, positions[string(rec.Key)])
 		}
 	}
 

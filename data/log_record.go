@@ -10,6 +10,7 @@ type LogRecordType = byte
 const (
 	LogRecordNormal LogRecordType = iota
 	LogRecordToDelete
+	LogRecordTxnFinished
 )
 
 // 定义 LogRecord 的头部信息最大值是15. crc(4) + Type(1) + KeySize(5) + ValueSize(5) = 15

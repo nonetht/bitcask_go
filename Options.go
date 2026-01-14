@@ -12,6 +12,18 @@ var DefaultOptions = Options{
 	SyncWrites:   false,
 }
 
+type WriteBatchSetup struct {
+	// 单批次最大数据量
+	MaxBatchNum uint
+	// 每一次事务是否要持久化
+	SyncWrites bool
+}
+
+var DefaultWriteBatchSetup = WriteBatchSetup{
+	MaxBatchNum: 4,
+	SyncWrites:  false,
+}
+
 func checkOptions(opt Options) error {
 	if len(opt.DirPath) == 0 {
 		return ErrDirPathIsEmpty

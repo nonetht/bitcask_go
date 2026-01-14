@@ -86,7 +86,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 
 // Get 根据 key 来获取对应的 value 值的信息
 func (db *DB) Get(key []byte) ([]byte, error) {
-	// 仍然是老规矩加锁
+	// 仍然是老规矩加锁，这里注意是加读锁
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 

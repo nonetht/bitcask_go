@@ -1,11 +1,24 @@
 package bitcask_gown
 
-import "bitcask-gown/data"
+import (
+	"bitcask-gown/data"
+	"sync"
+)
 
 type WriteBatch struct {
+	mu            *sync.Mutex // 务必有这个，否则只是通过 db 之中就会导致整个数据库读写都被阻塞
 	db            *DB
 	pendingWrites map[string]*data.LogRecord
 	setup         *WriteBatchSetup
+}
+
+func NewWriteBatch(db *DB, setup *WriteBatchSetup) *WriteBatch {
+	return &WriteBatch{
+		mu:            new(sync.Mutex),
+		db:            db,
+		pendingWrites: make(map[string]*data.LogRecord),
+		setup:         setup,
+	}
 }
 
 // Put 将 key，value 以 logRecord 形式写入到 pendingWrites 之中
@@ -15,8 +28,8 @@ func (wb *WriteBatch) Put(key, value []byte) error {
 	}
 
 	// 仍然是加锁防止竞态条件
-	wb.db.lock.Lock()
-	defer wb.db.lock.Unlock()
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 
 	logRecord := data.NewLogRecord(key, value)
 	wb.pendingWrites[string(key)] = logRecord
@@ -30,8 +43,8 @@ func (wb *WriteBatch) Delete(key []byte) error {
 		return ErrKeyIsEmpty
 	}
 
-	wb.db.lock.Lock()
-	defer wb.db.lock.Unlock()
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 
 	// 检验 pendingWrites 是否已存在对应的 key
 	existRec, existPending := wb.pendingWrites[string(key)]
@@ -58,9 +71,9 @@ func (wb *WriteBatch) Delete(key []byte) error {
 
 // Commit 将待写入区域的 logRecord 全部写入，并更新索引
 func (wb *WriteBatch) Commit() error {
-	// 保证线程安全
-	wb.db.lock.Lock()
-	defer wb.db.lock.Unlock()
+	// 锁住暂存区
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 
 	// 检验 pendingWrites 是否有效
 	if len(wb.pendingWrites) == 0 {
@@ -71,6 +84,10 @@ func (wb *WriteBatch) Commit() error {
 	if len(wb.pendingWrites) > int(wb.setup.MaxBatchNum) {
 		return ErrExceedMaxBatchNum
 	}
+
+	// 锁住 DB
+	wb.db.lock.Lock()
+	defer wb.db.lock.Unlock()
 
 	// 创建 positions 用户存储 key - pos 的映射
 	positions := make(map[string]*data.LogRecordPos)
@@ -87,7 +104,7 @@ func (wb *WriteBatch) Commit() error {
 
 	// 写入到最后，我们需要创建一个新的类型为 logRecordTxnFinshed 的记录，然后写入到 dataFile 之中
 	lstRec := &data.LogRecord{
-		Key:  []byte("txn-finished"), // key 内容不重要
+		Key:  []byte("txn-finished"), // key 内容不重要，但是最好不要为空
 		Type: data.LogRecordTxnFinished,
 	}
 	_, err := wb.db.appendLogRecord(lstRec)

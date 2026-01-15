@@ -2,8 +2,12 @@ package bitcask_gown
 
 import (
 	"bitcask-gown/data"
+	"encoding/binary"
 	"sync"
+	"sync/atomic"
 )
+
+var txnFinKey = "txn-finished"
 
 type WriteBatch struct {
 	mu            *sync.Mutex // 务必有这个，否则只是通过 db 之中就会导致整个数据库读写都被阻塞
@@ -85,9 +89,12 @@ func (wb *WriteBatch) Commit() error {
 		return ErrExceedMaxBatchNum
 	}
 
-	// 锁住 DB
+	// 锁住 DB，保证事务提交的串行化
 	wb.db.lock.Lock()
 	defer wb.db.lock.Unlock()
+
+	// 获取当前最新的事务序列号
+	serialNum := atomic.AddUint64(&wb.db.serialNum, 1)
 
 	// 创建 positions 用户存储 key - pos 的映射
 	positions := make(map[string]*data.LogRecordPos)
@@ -95,7 +102,12 @@ func (wb *WriteBatch) Commit() error {
 	// 将所有的 logRecord 添加到 dataFile 之中
 	for _, rec := range wb.pendingWrites {
 		// appendLogRecord 是 db.go 之中的方法，负责追加写入到 activeFile
-		pos, err := wb.db.appendLogRecord(rec)
+		pos, err := wb.db.appendLogRecord(&data.LogRecord{
+			Key:   recKeyWithSerialNum(rec.Key, serialNum),
+			Value: rec.Value,
+			Type:  rec.Type,
+		})
+
 		if err != nil {
 			return err
 		}
@@ -104,7 +116,7 @@ func (wb *WriteBatch) Commit() error {
 
 	// 写入到最后，我们需要创建一个新的类型为 logRecordTxnFinshed 的记录，然后写入到 dataFile 之中
 	lstRec := &data.LogRecord{
-		Key:  []byte("txn-finished"), // key 内容不重要，但是最好不要为空
+		Key:  []byte(txnFinKey), // key 内容不重要，但是最好不要为空
 		Type: data.LogRecordTxnFinished,
 	}
 	_, err := wb.db.appendLogRecord(lstRec)
@@ -112,7 +124,7 @@ func (wb *WriteBatch) Commit() error {
 		return err
 	}
 
-	// 根据配置选择是否刷盘
+	// 根据配置选择是否持久化
 	if wb.setup.SyncWrites {
 		if err := wb.db.Sync(); err != nil {
 			return err
@@ -127,5 +139,23 @@ func (wb *WriteBatch) Commit() error {
 		}
 	}
 
+	// 最后将其进行清空即可
+	wb.pendingWrites = make(map[string]*data.LogRecord)
+
 	return nil
+}
+
+// rec 之中，key + serialNum 编码
+func recKeyWithSerialNum(key []byte, serialNum uint64) []byte {
+	// 创建字节型数组 serialNumBytes
+	serialNumBytes := make([]byte, binary.MaxVarintLen64)
+	// 随后将 serialNum 放入到刚才创建的字节数组 serialNumBytes 之中
+	n := binary.PutUvarint(serialNumBytes[:], serialNum)
+
+	// 创建一个新的数组 encKey，长度为原本 key 长度再加上 serialNumBytes 的长度
+	encKey := make([]byte, n+len(key))
+	copy(encKey[:n], serialNumBytes[:n])
+	copy(encKey[n:], key)
+
+	return encKey
 }

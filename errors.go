@@ -13,4 +13,5 @@ var (
 	ErrIndexDeleteFailed    = errors.New("index delete failed")
 	ErrPendingWritesInvalid = errors.New("pending writes unvalid")
 	ErrExceedMaxBatchNum    = errors.New("exceed max batch num")
+	ErrActiveFileNotExist   = errors.New("active file not exist")
 )

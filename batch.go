@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 )
 
+const nonTxnSerialNum uint64 = 0
+
 var txnFinKey = "txn-finished"
 
 type WriteBatch struct {
@@ -114,7 +116,7 @@ func (wb *WriteBatch) Commit() error {
 		positions[string(rec.Key)] = pos // 将 key - pos 存储到 positions 之中，便于后期索引更新
 	}
 
-	// 写入到最后，我们需要创建一个新的类型为 logRecordTxnFinshed 的记录，然后写入到 dataFile 之中
+	// 写入到最后，我们需要创建一个新的类型为 logRecordTxnFinshed 的记录（用以标志事务结束），然后写入到 dataFile 之中
 	lstRec := &data.LogRecord{
 		Key:  []byte(txnFinKey), // key 内容不重要，但是最好不要为空
 		Type: data.LogRecordTxnFinished,
@@ -158,4 +160,11 @@ func recKeyWithSerialNum(key []byte, serialNum uint64) []byte {
 	copy(encKey[n:], key)
 
 	return encKey
+}
+
+// 解析 logRecord.Key，获取对应的 key 以及 事务序列号
+func parseLogRecordKey(key []byte) ([]byte, uint64) {
+	serialNum, n := binary.Uvarint(key) // TODO: 我还不知道 Uvarint 方法是什么意思来
+	realKey := key[n:]
+	return realKey, serialNum
 }

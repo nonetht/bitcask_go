@@ -46,6 +46,12 @@ type LogRecordPos struct {
 	Offset int64
 }
 
+// TxnLogRecord 主要是用于在事务处理之中的数据信息
+type TxnLogRecord struct {
+	Record *LogRecord
+	Pos    *LogRecordPos
+}
+
 // EncodeLogRecord 将 LogRecord 进行编码操作，转换为 []byte 字节数组
 func EncodeLogRecord(record *LogRecord) ([]byte, int64) {
 	tempBuf := make([]byte, maxLogRecordHeaderSize)

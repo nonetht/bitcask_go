@@ -19,6 +19,7 @@ type DB struct {
 	activeFile *data.DataFile            // 当前正在执行写入的活跃文件
 	oldFiles   map[uint32]*data.DataFile // 已经“写满”的旧数据文件
 	index      index.Indexer             // 索引部分，存储数据位置信息的地方
+	serialNum  uint64                    // 事务序列号，全局递增
 }
 
 // NewDB 创建数据库实例
@@ -72,7 +73,12 @@ func (db *DB) Put(key []byte, value []byte) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	logRecord := data.NewLogRecord(key, value)
+	logRecord := &data.LogRecord{
+		Key:   recKeyWithSerialNum(key, nonTxnSerialNum),
+		Value: value,
+		Type:  data.LogRecordNormal,
+	}
+
 	pos, err := db.appendLogRecord(logRecord)
 	if err != nil {
 		return err
@@ -141,7 +147,7 @@ func (db *DB) Delete(key []byte) error {
 	}
 
 	recToDelete := &data.LogRecord{
-		Key:  key,
+		Key:  recKeyWithSerialNum(key, nonTxnSerialNum),
 		Type: data.LogRecordToDelete,
 	}
 
@@ -180,6 +186,10 @@ func (db *DB) Close() error {
 
 // Sync 将数据库之中的当前 activeFile 进行持久化即可
 func (db *DB) Sync() error {
+	if db.activeFile == nil {
+		return ErrActiveFileNotExist
+	}
+
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
@@ -295,11 +305,31 @@ func (db *DB) loadDataFile() error {
 	return nil
 }
 
+// 在引入事务之后，其复杂度也相应增加。因为我们需要考虑类型 LogRecordTxnFinished 作为事务结束的标志；
+// 我吐槽一点，我认为这个方法写的很特么乱，纯粹是未来给自己找不痛快。
 func (db *DB) loadIndex() error {
 	// 判断是否存在数据文件，如果 fileIDs 为空，必然是不存在数据文件
 	if len(db.fileIds) == 0 {
 		return nil
 	}
+
+	updateIndex := func(typ data.LogRecordType, realKey []byte, pos *data.LogRecordPos) error {
+		// 更新内存索引
+		var ok bool
+		if typ == data.LogRecordToDelete {
+			ok = db.index.Delete(realKey) // 假设已经在 Index 之中被删除了，会导致返回错误。
+		} else {
+			ok = db.index.Put(realKey, pos)
+		}
+		if !ok {
+			return ErrIndexUpdateFailed
+		}
+		return nil
+	}
+
+	// 暂存事务的映射，即事务号 -> 事务 （logRecord 形成的数组）
+	txnBuf := make(map[uint64][]*data.TxnLogRecord)
+	var newestSerialNum uint64 = 0
 
 	var dataFile *data.DataFile
 	for i, fileId := range db.fileIds {
@@ -311,7 +341,7 @@ func (db *DB) loadIndex() error {
 			dataFile = db.oldFiles[uint32(fileId)]
 		}
 
-		// 持续读取，直到文件末尾
+		// 持续读取，直到文件末尾 -- EOF
 		for {
 			// 根据 offset 从 DataFile 之中提取出 LogRecord；但其实是想要获取对应 LogRecord 的Key以及长度，以便于更新索引
 			record, size, err := dataFile.ReadLogRecord(offset)
@@ -328,18 +358,49 @@ func (db *DB) loadIndex() error {
 				Offset: offset,
 			}
 
-			// 处理删除类型的内容
-			if record.Type == data.LogRecordToDelete {
-				db.index.Delete(record.Key) // 假设已经在 Index 之中被删除了，会导致返回错误。
-			} else {
-				// 向索引之中添加该 pos
-				if ok := db.index.Put(record.Key, pos); !ok {
-					return ErrIndexUpdateFailed
+			// 解析 logRecord.Key，获取 realKey、txnSerialNum
+			realKey, serialNum := parseLogRecordKey(record.Key)
+
+			// 根据 txnSerialNum，如果不是事务，则立即更新内存索引
+			if serialNum == nonTxnSerialNum {
+				if err := updateIndex(record.Type, realKey, pos); err != nil {
+					return err
 				}
+			} else {
+				// 如果是事务的话...即读取到了事务结束的标志
+				TxnRecs := txnBuf[serialNum] //TODO: 如果一开始为空的话，是否还会建立一个新的数组呢？
+				if record.Type == data.LogRecordTxnFinished {
+					for _, TxnRec := range TxnRecs {
+						if err := updateIndex(TxnRec.Record.Type, realKey, TxnRec.Pos); err != nil {
+							return err
+						}
+					}
+					delete(txnBuf, serialNum) // 写入完毕后，执行删除操作
+				} else {
+					// 反之，如果没有读到事务结束标记，则将其记录到我们的 txnBuf 之中
+					record.Key = realKey // 感觉很奇怪，很突兀
+					txnRec := &data.TxnLogRecord{
+						Record: record,
+						Pos:    pos,
+					}
+					TxnRecs = append(TxnRecs, txnRec)
+				}
+			}
+
+			// 更新序列号
+			if serialNum > newestSerialNum {
+				newestSerialNum = serialNum
 			}
 
 			offset += size // 递增 offset 部分内容
 		}
+
+		// 若为当前活跃文件，更新该文件 WriteOff
+		// TODO: 为什么是它来更新呢？为什么该 loadIndex 有那么多指责要做？？？
+		if i == len(db.fileIds)-1 {
+			db.activeFile.WriteOff = offset
+		}
 	}
+	db.serialNum = newestSerialNum
 	return nil
 }
